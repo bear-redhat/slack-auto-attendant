@@ -11,6 +11,7 @@ from langchain.chains import ConversationalRetrievalChain, LLMChain
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chat_models import ChatOpenAI
 from langchain.chains.qa_with_sources import load_qa_with_sources_chain
+from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
@@ -87,6 +88,13 @@ def ingest_directory(directory, index_name):
     logger.info('Done!')
 
 def create_conversation(system_prompt_str: Optional[str]=None):
+    system_prompt_qa = None
+    if system_prompt_str:
+        system_prompt_qa = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(system_prompt_str),
+            HumanMessagePromptTemplate.from_template("{question}"),
+            ])
+
     embeddings = OpenAIEmbeddings(
         model='text-embedding-ada-002',
         openai_api_key=OPENAI_API_KEY,
@@ -109,41 +117,49 @@ def create_conversation(system_prompt_str: Optional[str]=None):
         output_key='answer',
         )
 
-    doc_chain = load_qa_with_sources_chain(
+    # doc_chain = load_qa_with_sources_chain(
+    #     model,
+    #     chain_type="stuff",
+    #     verbose=True,
+    #     prompt=system_prompt_qa
+    #     )
+
+    qa_chain = load_qa_chain(
         model,
-        chain_type="map_reduce"
-        )
-    system_prompt = None
-    if system_prompt_str:
-        system_prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(system_prompt_str),
-            HumanMessagePromptTemplate.from_template("{question}"),
-            ])
+        chain_type="stuff",
+        verbose=True,
+        prompt=system_prompt_qa
+    )
+
+    
     question_generator = LLMChain(
         llm=model,
         prompt=CONDENSE_QUESTION_PROMPT,
         verbose=True,
         )
 
-    conversation = ConversationalRetrievalChain.from_llm(
-        model,
-        # question_generator=question_generator,
+    conversation = ConversationalRetrievalChain(
+        # model,
+        question_generator=question_generator,
         retriever=vector_store.as_retriever(),
-        # combine_docs_chain=doc_chain,
+        combine_docs_chain=qa_chain,
         memory=memory,
         return_source_documents=True,
         return_generated_question=True,
         max_tokens_limit=MAX_TOKEN_SIZE,
         verbose=True,
-        combine_docs_chain_kwargs={
-            'prompt': system_prompt,
-        }
+        # combine_docs_chain_kwargs={
+        #     'prompt': system_prompt,
+        # }
         )
 
     def conversation_wrapper(user_input: str) -> str:
         resp = conversation({"question": user_input})
         answer = resp.get('answer', '') or ''
         sources = resp.get('source_documents', []) or []
+        source_paths = [s.metadata.get('source') for s in sources if s.metadata.get('source')]
+        # don't return sources. No matter what you asked,
+        # even totally irrelevant questions, it will return some random docs
         return answer
 
     return conversation_wrapper
