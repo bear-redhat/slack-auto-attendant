@@ -203,7 +203,7 @@ if __name__ == "__main__":
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--ingest', type=str, help='The directory containing the .md files to ingest.')
     group.add_argument('--interactive', action='store_true', help='Run in interactive mode.')
-    parser.add_argument('--system-prompt', type=str, help='The path to the text file containing the system prompt.', required=False)
+    parser.add_argument('--system-prompt', type=str, help='The path to the text file containing the system prompt.', required=False, default='./system-prompt.txt')
     args = parser.parse_args()
 
     # Check for API keys
