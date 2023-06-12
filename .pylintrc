@@ -1,0 +1,6 @@
+[MASTER]
+disable=missing-module-docstring
+
+[TYPECHECK]
+# Add the module names for which you want to disable the warning
+ignored-modules=slack-auto-attendant

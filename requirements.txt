@@ -1,0 +1,7 @@
+pinecone-client
+openai
+langchain
+tqdm
+unstructured
+pdf2image
+tiktoken
