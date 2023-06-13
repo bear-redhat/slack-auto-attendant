@@ -1,7 +1,7 @@
 import os
 import argparse
 import logging
-from typing import  Optional
+from typing import Dict,List, Optional, Tuple
 import pinecone
 from langchain.document_loaders import DirectoryLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -10,7 +10,6 @@ from langchain.vectorstores.pinecone import Pinecone as PineconeStore
 from langchain.chains import ConversationalRetrievalChain, LLMChain
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chat_models import ChatOpenAI
-from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts.chat import (
     ChatPromptTemplate,
@@ -18,6 +17,8 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate
 )
 from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
+
+from slack_server import start_server
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def ingest_directory(directory, index_name):
         )
     logger.info('Done!')
 
-def create_conversation(system_prompt_str: Optional[str]=None):
+def create_conversation(system_prompt_str: Optional[str]=None, chat_history: Optional[List[Tuple[str, str]]]=None):
     system_prompt_qa = None
     if system_prompt_str:
         system_prompt_qa = ChatPromptTemplate.from_messages([
@@ -117,6 +118,13 @@ def create_conversation(system_prompt_str: Optional[str]=None):
         output_key='answer',
         )
 
+    if chat_history:
+        for name, message in chat_history:
+            if (name == 'little_bear'):
+                memory.chat_memory.add_ai_message(message)
+            else:
+                memory.chat_memory.add_user_message(message)
+
     # doc_chain = load_qa_with_sources_chain(
     #     model,
     #     chain_type="stuff",
@@ -131,7 +139,6 @@ def create_conversation(system_prompt_str: Optional[str]=None):
         prompt=system_prompt_qa
     )
 
-    
     question_generator = LLMChain(
         llm=model,
         prompt=CONDENSE_QUESTION_PROMPT,
@@ -203,7 +210,15 @@ if __name__ == "__main__":
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--ingest', type=str, help='The directory containing the .md files to ingest.')
     group.add_argument('--interactive', action='store_true', help='Run in interactive mode.')
-    parser.add_argument('--system-prompt', type=str, help='The path to the text file containing the system prompt.', required=False, default='./system-prompt.txt')
+    group.add_argument('--slack', action='store_true', help='Create Flask server')
+    parser.add_argument('--system-prompt', type=str,
+        help='The path to the text file containing the system prompt.',
+        required=False,
+        default='./system-prompt.txt')
+    parser.add_argument('--port', type=int,
+        help='The port to run the Slack server on.',
+        required=False,
+        default=9000)
     args = parser.parse_args()
 
     # Check for API keys
@@ -216,12 +231,6 @@ if __name__ == "__main__":
     if not OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY environment variable not set.")
 
-    if args.interactive and not args.system_prompt:
-        raise ValueError("The --system-prompt parameter is required when using --interactive.")
-
-    if args.system_prompt and not args.interactive:
-        raise ValueError("The --system-prompt parameter can only be used with --interactive.")
-
     # Initialize logging
     logging.basicConfig(level=logging.INFO)
 
@@ -230,3 +239,6 @@ if __name__ == "__main__":
 
     if args.interactive:
         interactive_chat(args.system_prompt)
+
+    if args.slack:
+        start_server(args.port)

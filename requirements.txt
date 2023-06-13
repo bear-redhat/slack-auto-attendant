@@ -5,3 +5,5 @@ tqdm
 unstructured
 pdf2image
 tiktoken
+flask
+slack_sdk

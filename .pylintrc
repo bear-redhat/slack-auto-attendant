@@ -1,5 +1,5 @@
 [MASTER]
-disable=missing-module-docstring
+disable=missing-module-docstring,missing-function-docstring
 
 [TYPECHECK]
 # Add the module names for which you want to disable the warning
