@@ -1,41 +1,75 @@
+import os
 import logging
+import re
+import pinecone
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.asgi.async_handler import AsyncSlackRequestHandler
+
+from conversation import create_conversation
+
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", '')
+PINECONE_ENVIRONMENT = os.environ.get("PINECONE_ENVIRONMENT", '')
 
 app = AsyncApp()
 
 @app.event("app_mention")
-async def handle_app_mentions(body, say, logger):
+async def handle_mention(body, say, logger):
     logger.info(body)
-    await say("What's up?")
 
-@app.event("message")
-async def handle_message(body, say, logger):
-    logger.info(body)
     evt = body.get('event', {})
 
-    thread_ts = evt.get('thread_ts') if 'thread_ts' in evt else evt.get('ts')
-    text = evt.get('text')
-
-    user_id = evt.get('user')
-    user_info = await app.client.users_info(user=user_id)
-    user_name = user_info.get('user', {}).get('name')
-
     channel_id = evt.get('channel')
+    thread_ts = evt.get('thread_ts') if 'thread_ts' in evt else evt.get('ts')
+
+    replies = await get_replies(channel_id, thread_ts)
+    text = replies[-1].get('text')
+    replies = replies[:-1]  # the last one is the one we just received
+    resp = await get_ai_response(replies=replies, question=text)
+
+    await say(resp, thread_ts=thread_ts)
+
+async def convert_ids_to_usernames(text):
+    user_ids = re.findall('<@(U.*?)>', text)
+    for user_id in user_ids:
+        username = await get_user_name(user_id)
+        text = text.replace(f'<@{user_id}>', f'@{username}')
+    return text
+
+async def get_replies(channel_id, thread_ts):
     conversation_replies = await app.client.conversations_replies(channel=channel_id, ts=thread_ts)
     replies = conversation_replies.get('messages', [])
     replies = [
         {
             'user': await get_user_name(r.get('user')),
-            'text': r.get('text'),
+            'text': await convert_ids_to_usernames(r.get('text')),
         } for r in replies]
-
-    await say(f"Hi {user_name}. You just said {text}\n right?", thread_ts=thread_ts)
+    return replies
 
 async def get_user_name(user_id):
     user_info = await app.client.users_info(user=user_id)
     user_name = user_info.get('user', {}).get('name')
     return user_name
+
+async def get_ai_response(replies, question):
+    pinecone.init(
+        api_key=PINECONE_API_KEY,
+        environment=PINECONE_ENVIRONMENT,
+    )
+    system_prompt_str = None
+    # FIXME: how to pass the path?
+    with open('system_prompt.txt', 'r', encoding='utf-8') as f:
+        system_prompt_str = f.read()
+
+    chat_history = []
+    for reply in replies:
+        chat_history.append((reply['user'], reply['text']))
+
+    conversation = create_conversation(
+        system_prompt_str=system_prompt_str,
+        chat_history=chat_history
+        )
+    return conversation(question)
 
 api = AsyncSlackRequestHandler(app)
 
