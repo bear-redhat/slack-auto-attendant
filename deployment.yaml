@@ -1,0 +1,125 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: slack-auto-attendant
+spec:
+  lookupPolicy:
+    local: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: slack-auto-attendant-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: slack-auto-attendant-build
+spec:
+  source:
+    git:
+      uri: https://github.com/bear-redhat/slack-auto-attendant.git
+    contextDir: .
+    type: Git
+  strategy:
+    dockerStrategy:
+      from:
+        kind: DockerImage
+        name: docker.io/library/python:alpine
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: slack-auto-attendant:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-auto-attendant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slack-auto-attendant
+  template:
+    metadata:
+      labels:
+        app: slack-auto-attendant
+    spec:
+      containers:
+        - name: slack-auto-attendant
+          image: image-registry.openshift-image-registry.svc:5000/bechen/slack-auto-attendant:latest
+          ports:
+            - containerPort: 3000
+          args: ["--slack"]
+          env:
+            - name: PINECONE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: slack-auto-attendant-secret
+                  key: PINECONE_API_KEY
+            - name: PINECONE_INDEX_NAME
+              value: slack-auto-attendant
+            - name: PINECONE_ENVIRONMENT
+              value: us-west4-gcp-free
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: slack-auto-attendant-secret
+                  key: OPENAI_API_KEY
+            - name: TEXT_SPLITTER_CHUCK_SIZE
+              value: '1000'
+            - name: TEXT_SPLITTER_OVERLAP
+              value: '200'
+            - name: SLACK_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: slack-auto-attendant-secret
+                  key: SLACK_SIGNING_SECRET
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: slack-auto-attendant-secret
+                  key: SLACK_BOT_TOKEN
+            - name: SLACK_INSTALLATION_BASE
+              value: ./slack_installations
+
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: slack-auto-attendant-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slack-auto-attendant
+spec:
+  selector:
+    app: slack-auto-attendant
+  ports:
+    - name: http
+      port: 80
+      targetPort: 9000
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: slack-auto-attendant
+spec:
+  to:
+    kind: Service
+    name: slack-auto-attendant
+  port:
+    targetPort: http
+  tls:
+    termination: edge

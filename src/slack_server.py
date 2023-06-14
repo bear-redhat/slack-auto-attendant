@@ -14,24 +14,24 @@ PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", '')
 PINECONE_ENVIRONMENT = os.environ.get("PINECONE_ENVIRONMENT", '')
 
-SLACK_CLIENT_ID = os.environ.get("SLACK_CLIENT_ID")
-SLACK_CLIENT_SECRET = os.environ.get("SLACK_CLIENT_SECRET")
+# SLACK_CLIENT_ID = os.environ.get("SLACK_CLIENT_ID")
+# SLACK_CLIENT_SECRET = os.environ.get("SLACK_CLIENT_SECRET")
 SLACK_INSTALLATION_BASE = os.environ.get("SLACK_INSTALLATION_BASE", '/data')
 
-if not SLACK_CLIENT_ID:
-    raise ValueError("SLACK_CLIENT_ID environment variable not set.")
-if not SLACK_CLIENT_SECRET:
-    raise ValueError("SLACK_CLIENT_SECRET environment variable not set.")
+# if not SLACK_CLIENT_ID:
+#     raise ValueError("SLACK_CLIENT_ID environment variable not set.")
+# if not SLACK_CLIENT_SECRET:
+#     raise ValueError("SLACK_CLIENT_SECRET environment variable not set.")
 
 # OAuth redirect: slack/oauth_redirect
 # Ref: https://slack.dev/bolt-python/concepts#authenticating-oauth
 app = AsyncApp(
-    oauth_flow=OAuthFlow(
-        settings=OAuthSettings(
-            scopes=["channels:history", "users:read", "app_mentions:read", "chat:write"],
-            installation_store=FileInstallationStore(base_dir=SLACK_INSTALLATION_BASE),  # A simple File based installation store
-        )
-    )
+    # oauth_flow=OAuthFlow(
+    #     settings=OAuthSettings(
+    #         scopes=["channels:history", "users:read", "app_mentions:read", "chat:write"],
+    #         installation_store=FileInstallationStore(base_dir=SLACK_INSTALLATION_BASE),  # A simple File based installation store
+    #     )
+    # )
 )
 
 @app.event("app_mention")
